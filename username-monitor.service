@@ -1,0 +1,15 @@
+[Unit]
+Description=Telegram Username Monitor Bot
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USERNAME
+WorkingDirectory=/path/to/username_cheker
+Environment="PATH=/path/to/username_cheker/venv/bin"
+ExecStart=/path/to/username_cheker/venv/bin/python /path/to/username_cheker/bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

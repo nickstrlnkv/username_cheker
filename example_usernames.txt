@@ -1,0 +1,9 @@
+# Пример файла со списком username для загрузки
+# Строки начинающиеся с # игнорируются
+
+# Формат: один username на строку (с @ или без)
+@telegram
+durov
+@username
+testuser123
+example_user
