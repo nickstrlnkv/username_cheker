@@ -18,6 +18,9 @@ class UserStates(StatesGroup):
     waiting_for_username_to_remove = State()
     waiting_for_interval = State()
     waiting_for_batch_size = State()
+    waiting_for_phone = State()
+    waiting_for_code = State()
+    waiting_for_password = State()
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, db, checker):
@@ -51,13 +54,14 @@ async def start_monitoring(callback: CallbackQuery, db, checker, bot):
     
     async def notification_callback(username: str):
         try:
-            await bot.send_message(
-                config.ADMIN_ID,
-                f"🎉 <b>USERNAME ОСВОБОДИЛСЯ!</b>\n\n"
-                f"@{username}\n\n"
-                f"Быстрее регистрируйте!",
-                parse_mode="HTML"
-            )
+            for admin_id in config.ADMIN_IDS:
+                await bot.send_message(
+                    admin_id,
+                    f"🎉 <b>USERNAME ОСВОБОДИЛСЯ!</b>\n\n"
+                    f"@{username}\n\n"
+                    f"Быстрее регистрируйте!",
+                    parse_mode="HTML"
+                )
             await db.mark_as_notified(username)
         except Exception as e:
             logger.error(f"Error sending notification: {e}")

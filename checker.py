@@ -13,10 +13,26 @@ class UsernameChecker:
         self.client = TelegramClient(session_name, api_id, api_hash)
         self.is_running = False
         self._check_task = None
+        self.auth_callbacks = {
+            'phone': None,
+            'code': None,
+            'password': None
+        }
         
-    async def start(self):
-        await self.client.start()
+    async def start(self, phone_callback=None, code_callback=None, password_callback=None):
+        self.auth_callbacks['phone'] = phone_callback
+        self.auth_callbacks['code'] = code_callback
+        self.auth_callbacks['password'] = password_callback
+        
+        await self.client.start(
+            phone=phone_callback,
+            code_callback=code_callback,
+            password=password_callback
+        )
         logger.info("Telethon client started")
+    
+    def is_authorized(self) -> bool:
+        return self.client.is_connected() and self.client.is_user_authorized()
     
     async def stop(self):
         self.is_running = False
