@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from aiogram.filters import Command, StateFilter
@@ -7,6 +8,7 @@ from aiogram.fsm.state import State, StatesGroup
 from io import BytesIO
 import keyboards
 import config
+from telethon_auth import authorize_telethon
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,58 @@ async def back_to_menu(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         "🤖 <b>Главное меню</b>\n\nВыберите действие:",
         reply_markup=keyboards.get_main_menu(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "reset_session")
+async def reset_session_confirm(callback: CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("⛔ Недостаточно прав", show_alert=True)
+        return
+
+    await callback.message.edit_text(
+        "⚠️ <b>Сброс сессии Telethon</b>\n\n"
+        "Текущая сессия будет удалена, и потребуется повторная авторизация.\n"
+        "Мониторинг будет остановлен.\n\n"
+        "Продолжить?",
+        reply_markup=keyboards.get_confirm_keyboard("reset_session"),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "confirm_reset_session")
+async def reset_session(callback: CallbackQuery, db, checker, bot, auth_handler):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("⛔ Недостаточно прав", show_alert=True)
+        return
+
+    checker.stop_monitoring()
+    await db.set_setting('monitoring_active', '0')
+
+    await callback.message.edit_text(
+        "🔄 <b>Сброс сессии...</b>\n\n"
+        "Удаляем текущую сессию и запускаем повторную авторизацию.",
+        parse_mode="HTML"
+    )
+
+    await checker.reset_session()
+
+    asyncio.create_task(
+        authorize_telethon(
+            bot,
+            checker,
+            auth_handler,
+            config.ADMIN_IDS,
+            prompt_admin_id=callback.from_user.id,
+            delay=0
+        )
+    )
+
+    await callback.message.edit_text(
+        "✅ <b>Сессия сброшена</b>\n\n"
+        "Теперь пройдите авторизацию Telethon в этом чате.",
+        reply_markup=keyboards.get_back_button(),
         parse_mode="HTML"
     )
     await callback.answer()

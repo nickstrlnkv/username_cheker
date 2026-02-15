@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from typing import List, Dict, Optional
 from telethon import TelegramClient
 from telethon.errors import UsernameInvalidError, UsernameNotOccupiedError, FloodWaitError
@@ -10,6 +11,9 @@ logger = logging.getLogger(__name__)
 
 class UsernameChecker:
     def __init__(self, api_id: int, api_hash: str, session_name: str):
+        self.api_id = api_id
+        self.api_hash = api_hash
+        self.session_name = session_name
         self.client = TelegramClient(session_name, api_id, api_hash)
         self.is_running = False
         self._check_task = None
@@ -40,6 +44,21 @@ class UsernameChecker:
             self._check_task.cancel()
         await self.client.disconnect()
         logger.info("Telethon client stopped")
+
+    async def reset_session(self):
+        await self.stop()
+
+        session_file = f"{self.session_name}.session"
+        session_journal = f"{self.session_name}.session-journal"
+
+        for path in (session_file, session_journal):
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except OSError as e:
+                logger.warning(f"Failed to remove session file {path}: {e}")
+
+        self.client = TelegramClient(self.session_name, self.api_id, self.api_hash)
     
     async def check_username(self, username: str) -> str:
         username = username.lstrip('@').lower()

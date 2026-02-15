@@ -11,63 +11,10 @@ from checker import UsernameChecker
 from handlers import router
 from utils import setup_logging
 from auth_handler import TelethonAuthHandler
+from telethon_auth import authorize_telethon
 
 logger = logging.getLogger(__name__)
 auth_handler = None
-
-async def authorize_telethon(bot, checker, auth_handler):
-    """Отдельная задача для авторизации Telethon"""
-    await asyncio.sleep(2)
-    
-    try:
-        await checker.client.connect()
-        is_authorized = await checker.client.is_user_authorized()
-        
-        if not is_authorized:
-            logger.info("Telethon not authorized, will request auth via bot")
-            for admin_id in config.ADMIN_IDS:
-                await bot.send_message(
-                    admin_id,
-                    "⚠️ <b>Требуется авторизация Telethon</b>\n\n"
-                    "Сейчас начнется процесс авторизации.\n"
-                    "Следуйте инструкциям бота.",
-                    parse_mode="HTML"
-                )
-            await checker.start(
-                phone_callback=auth_handler.phone_callback,
-                code_callback=auth_handler.code_callback,
-                password_callback=auth_handler.password_callback
-            )
-            for admin_id in config.ADMIN_IDS:
-                await bot.send_message(
-                    admin_id,
-                    "✅ <b>Авторизация успешна!</b>\n\n"
-                    "Telethon клиент подключен и готов к работе.",
-                    parse_mode="HTML"
-                )
-        else:
-            logger.info("Telethon already authorized")
-            await checker.start(
-                phone_callback=auth_handler.phone_callback,
-                code_callback=auth_handler.code_callback,
-                password_callback=auth_handler.password_callback
-            )
-            for admin_id in config.ADMIN_IDS:
-                await bot.send_message(
-                    admin_id,
-                    "✅ <b>Бот запущен!</b>\n\n"
-                    "Telethon клиент уже авторизован и готов к работе.",
-                    parse_mode="HTML"
-                )
-    except Exception as e:
-        logger.error(f"Error starting Telethon: {e}", exc_info=True)
-        for admin_id in config.ADMIN_IDS:
-            await bot.send_message(
-                admin_id,
-                f"❌ <b>Ошибка запуска Telethon</b>\n\n"
-                f"<code>{str(e)}</code>",
-                parse_mode="HTML"
-            )
 
 async def main():
     setup_logging()
@@ -135,7 +82,9 @@ async def main():
         data['auth_handler'] = auth_handler
         return await handler(event, data)
     
-    auth_task = asyncio.create_task(authorize_telethon(bot, checker, auth_handler))
+    auth_task = asyncio.create_task(
+        authorize_telethon(bot, checker, auth_handler, config.ADMIN_IDS)
+    )
     
     try:
         logger.info("Bot started successfully!")

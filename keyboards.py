@@ -33,6 +33,9 @@ def get_settings_menu() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="📦 Размер батча", callback_data="set_batch_size")
         ],
         [
+            InlineKeyboardButton(text="🔐 Перевойти Telethon", callback_data="reset_session")
+        ],
+        [
             InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_menu")
         ]
     ])
