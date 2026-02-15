@@ -12,9 +12,16 @@ class TelethonAuthHandler:
         self.phone_future = None
         self.code_future = None
         self.password_future = None
+        self.auth_in_progress = False
 
     def set_admin_id(self, admin_id: int):
         self.admin_id = admin_id
+
+    def set_auth_in_progress(self, value: bool):
+        self.auth_in_progress = value
+
+    def is_auth_in_progress(self) -> bool:
+        return self.auth_in_progress
         
     async def phone_callback(self):
         self.phone_future = asyncio.Future()

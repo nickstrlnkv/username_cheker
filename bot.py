@@ -3,7 +3,7 @@ import logging
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 
 import config
 from database import Database
@@ -11,7 +11,7 @@ from checker import UsernameChecker
 from handlers import router
 from utils import setup_logging
 from auth_handler import TelethonAuthHandler
-from telethon_auth import authorize_telethon
+from telethon_auth import authorize_telethon, ensure_authorized
 
 logger = logging.getLogger(__name__)
 auth_handler = None
@@ -68,6 +68,21 @@ async def main():
     
     @router.message.middleware()
     async def inject_dependencies(handler, event, data):
+        prompt_admin_id = event.from_user.id if event.from_user else None
+        is_authorized = await ensure_authorized(
+            bot,
+            checker,
+            auth_handler,
+            config.ADMIN_IDS,
+            prompt_admin_id=prompt_admin_id
+        )
+        if not is_authorized:
+            if auth_handler.is_auth_in_progress():
+                await event.answer("⏳ Авторизация Telethon в процессе. Следуйте инструкциям.")
+            else:
+                await event.answer("🔐 Требуется авторизация Telethon. Следуйте инструкциям бота.")
+            return
+
         data['db'] = db
         data['checker'] = checker
         data['bot'] = bot
@@ -76,6 +91,21 @@ async def main():
     
     @router.callback_query.middleware()
     async def inject_dependencies_callback(handler, event, data):
+        prompt_admin_id = event.from_user.id if event.from_user else None
+        is_authorized = await ensure_authorized(
+            bot,
+            checker,
+            auth_handler,
+            config.ADMIN_IDS,
+            prompt_admin_id=prompt_admin_id
+        )
+        if not is_authorized:
+            if auth_handler.is_auth_in_progress():
+                await event.answer("⏳ Авторизация Telethon в процессе. Следуйте инструкциям.", show_alert=True)
+            else:
+                await event.answer("🔐 Требуется авторизация Telethon. Следуйте инструкциям бота.", show_alert=True)
+            return
+
         data['db'] = db
         data['checker'] = checker
         data['bot'] = bot
