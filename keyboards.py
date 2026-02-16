@@ -33,10 +33,44 @@ def get_settings_menu() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="📦 Размер батча", callback_data="set_batch_size")
         ],
         [
+            InlineKeyboardButton(text="💬 Настройки спама", callback_data="spam_settings")
+        ],
+        [
             InlineKeyboardButton(text="🔐 Перевойти Telethon", callback_data="reset_session")
         ],
         [
             InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_menu")
+        ]
+    ])
+    return keyboard
+
+def get_spam_settings_menu() -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="⏱ Задержка между сообщениями", callback_data="set_spam_delay")
+        ],
+        [
+            InlineKeyboardButton(text="🔢 Количество сообщений", callback_data="set_spam_count")
+        ],
+        [
+            InlineKeyboardButton(text="🔄 Режим спама", callback_data="set_spam_mode")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 Назад", callback_data="settings")
+        ]
+    ])
+    return keyboard
+
+def get_spam_mode_keyboard() -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔢 Указать количество", callback_data="spam_mode_count")
+        ],
+        [
+            InlineKeyboardButton(text="♾ До занятия username", callback_data="spam_mode_until")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 Назад", callback_data="spam_settings")
         ]
     ])
     return keyboard

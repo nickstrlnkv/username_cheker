@@ -23,6 +23,8 @@ class UserStates(StatesGroup):
     waiting_for_phone = State()
     waiting_for_code = State()
     waiting_for_password = State()
+    waiting_for_spam_delay = State()
+    waiting_for_spam_count = State()
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, db, checker):
@@ -106,8 +108,13 @@ async def start_monitoring(callback: CallbackQuery, db, checker, bot):
     
     await db.set_setting('monitoring_active', '1')
     
+    # Сохраняем chat_id из чата где запущен мониторинг
+    chat_id = callback.message.chat.id
+    await db.set_setting('spam_chat_id', str(chat_id))
+    
     async def notification_callback(username: str):
         try:
+            # Отправка уведомлений админам
             for admin_id in config.ADMIN_IDS:
                 await bot.send_message(
                     admin_id,
@@ -116,6 +123,44 @@ async def start_monitoring(callback: CallbackQuery, db, checker, bot):
                     f"Быстрее регистрируйте!",
                     parse_mode="HTML"
                 )
+            
+            # Получаем настройки спама из БД
+            spam_chat_id_str = await db.get_setting('spam_chat_id') or ''
+            spam_delay = float(await db.get_setting('spam_delay') or '0.5')
+            spam_mode = await db.get_setting('spam_mode') or 'count'
+            spam_count = int(await db.get_setting('spam_message_count') or '10')
+            
+            if not spam_chat_id_str:
+                logger.warning("spam_chat_id not set, skipping spam")
+                await db.mark_as_notified(username)
+                return
+            
+            spam_chat_id = int(spam_chat_id_str)
+            message_text = (
+                f"🎉 <b>USERNAME ОСВОБОДИЛСЯ!</b>\n\n"
+                f"@{username}\n\n"
+                f"Быстрее регистрируйте!"
+            )
+            
+            if spam_mode == 'count':
+                # Режим: указать количество сообщений
+                for i in range(spam_count):
+                    try:
+                        await bot.send_message(
+                            spam_chat_id,
+                            message_text,
+                            parse_mode="HTML"
+                        )
+                        await asyncio.sleep(spam_delay)
+                    except Exception as spam_error:
+                        logger.error(f"Error spamming chat (message {i+1}/{spam_count}): {spam_error}")
+                        continue
+            elif spam_mode == 'until_occupied':
+                # Режим: спамить до занятия username
+                asyncio.create_task(
+                    spam_until_occupied(bot, checker, db, spam_chat_id, username, message_text, spam_delay)
+                )
+            
             await db.mark_as_notified(username)
         except Exception as e:
             logger.error(f"Error sending notification: {e}")
@@ -131,6 +176,42 @@ async def start_monitoring(callback: CallbackQuery, db, checker, bot):
         parse_mode="HTML"
     )
     await callback.answer()
+
+async def spam_until_occupied(bot, checker, db, chat_id, username, message_text, delay):
+    """Спамит в чат пока username не займут"""
+    username_clean = username.lstrip('@').lower()
+    check_interval = 5.0  # Интервал проверки статуса (секунды)
+    
+    while True:
+        try:
+            # Отправляем сообщение
+            try:
+                await bot.send_message(
+                    chat_id,
+                    message_text,
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.error(f"Error sending spam message: {e}")
+                # Продолжаем даже если одно сообщение не отправилось
+            
+            await asyncio.sleep(delay)
+            
+            # Периодически проверяем статус username
+            # Проверяем каждые N сообщений или каждые check_interval секунд
+            status = await checker.check_username(username_clean)
+            
+            if status != 'free':
+                # Username занят, прекращаем спам
+                logger.info(f"Username @{username_clean} is now {status}, stopping spam")
+                break
+            
+            # Обновляем статус в БД
+            await db.update_username_status(username_clean, status)
+            
+        except Exception as e:
+            logger.error(f"Error in spam_until_occupied: {e}")
+            await asyncio.sleep(delay)
 
 @router.callback_query(F.data == "stop_monitoring")
 async def stop_monitoring(callback: CallbackQuery, db, checker):
@@ -387,6 +468,126 @@ async def process_batch_size(message: Message, state: FSMContext, db):
         return
     
     await state.clear()
+
+@router.callback_query(F.data == "spam_settings")
+async def show_spam_settings(callback: CallbackQuery, db):
+    spam_delay = await db.get_setting('spam_delay') or '0.5'
+    spam_mode = await db.get_setting('spam_mode') or 'count'
+    spam_count = await db.get_setting('spam_message_count') or '10'
+    
+    mode_text = "🔢 Указать количество" if spam_mode == 'count' else "♾ До занятия username"
+    
+    await callback.message.edit_text(
+        f"💬 <b>Настройки спама</b>\n\n"
+        f"⏱ Задержка между сообщениями: <b>{spam_delay}с</b>\n"
+        f"🔄 Режим спама: <b>{mode_text}</b>\n"
+        f"🔢 Количество сообщений: <b>{spam_count}</b>\n\n"
+        f"Выберите параметр для изменения:",
+        reply_markup=keyboards.get_spam_settings_menu(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "set_spam_delay")
+async def set_spam_delay(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(UserStates.waiting_for_spam_delay)
+    await callback.message.edit_text(
+        "⏱ <b>Установка задержки между сообщениями</b>\n\n"
+        "Отправьте задержку в секундах (0.1-10.0).\n"
+        "Например: 0.5 для полсекунды, 1.0 для секунды.\n\n"
+        "Отправьте /cancel для отмены.",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@router.message(UserStates.waiting_for_spam_delay)
+async def process_spam_delay(message: Message, state: FSMContext, db):
+    try:
+        delay = float(message.text.strip().replace(',', '.'))
+        if 0.1 <= delay <= 10.0:
+            await db.set_setting('spam_delay', str(delay))
+            await message.answer(
+                f"✅ Задержка установлена: {delay}с",
+                reply_markup=keyboards.get_spam_settings_menu()
+            )
+        else:
+            await message.answer("⚠️ Задержка должна быть от 0.1 до 10.0 секунд!")
+            return
+    except ValueError:
+        await message.answer("⚠️ Введите число (можно с точкой или запятой)!")
+        return
+    
+    await state.clear()
+
+@router.callback_query(F.data == "set_spam_count")
+async def set_spam_count(callback: CallbackQuery, state: FSMContext, db):
+    spam_mode = await db.get_setting('spam_mode') or 'count'
+    if spam_mode != 'count':
+        await callback.answer("⚠️ Сначала установите режим 'Указать количество'!", show_alert=True)
+        return
+    
+    await state.set_state(UserStates.waiting_for_spam_count)
+    await callback.message.edit_text(
+        "🔢 <b>Установка количества сообщений</b>\n\n"
+        "Отправьте количество сообщений для спама (1-100).\n\n"
+        "Отправьте /cancel для отмены.",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@router.message(UserStates.waiting_for_spam_count)
+async def process_spam_count(message: Message, state: FSMContext, db):
+    try:
+        count = int(message.text.strip())
+        if 1 <= count <= 100:
+            await db.set_setting('spam_message_count', str(count))
+            await message.answer(
+                f"✅ Количество сообщений установлено: {count}",
+                reply_markup=keyboards.get_spam_settings_menu()
+            )
+        else:
+            await message.answer("⚠️ Количество должно быть от 1 до 100!")
+            return
+    except ValueError:
+        await message.answer("⚠️ Введите число!")
+        return
+    
+    await state.clear()
+
+@router.callback_query(F.data == "set_spam_mode")
+async def set_spam_mode(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "🔄 <b>Выбор режима спама</b>\n\n"
+        "🔢 <b>Указать количество</b> - отправить фиксированное количество сообщений\n"
+        "♾ <b>До занятия username</b> - продолжать спамить пока username не займут\n\n"
+        "Выберите режим:",
+        reply_markup=keyboards.get_spam_mode_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "spam_mode_count")
+async def spam_mode_count(callback: CallbackQuery, db):
+    await db.set_setting('spam_mode', 'count')
+    spam_count = await db.get_setting('spam_message_count') or '10'
+    await callback.message.edit_text(
+        f"✅ <b>Режим установлен: Указать количество</b>\n\n"
+        f"Бот будет отправлять <b>{spam_count}</b> сообщений при освобождении username.",
+        reply_markup=keyboards.get_spam_settings_menu(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "spam_mode_until")
+async def spam_mode_until(callback: CallbackQuery, db):
+    await db.set_setting('spam_mode', 'until_occupied')
+    await callback.message.edit_text(
+        "✅ <b>Режим установлен: До занятия username</b>\n\n"
+        "Бот будет продолжать спамить пока username не займут.",
+        reply_markup=keyboards.get_spam_settings_menu(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
 
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message, state: FSMContext):

@@ -43,7 +43,11 @@ class Database:
                 INSERT OR IGNORE INTO settings (key, value) VALUES 
                 ('monitoring_active', '0'),
                 ('check_interval', '1'),
-                ('batch_size', '50')
+                ('batch_size', '50'),
+                ('spam_delay', '0.5'),
+                ('spam_mode', 'count'),
+                ('spam_message_count', '10'),
+                ('spam_chat_id', '')
             ''')
             
             await db.commit()
