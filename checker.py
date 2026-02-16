@@ -96,7 +96,7 @@ class UsernameChecker:
     
     async def start_monitoring(self, db, notification_callback):
         self.is_running = True
-        logger.info("Monitoring started")
+        logger.info("Monitoring started - entering main loop")
         
         while self.is_running:
             try:
@@ -140,3 +140,6 @@ class UsernameChecker:
     
     def stop_monitoring(self):
         self.is_running = False
+        if self._check_task and not self._check_task.done():
+            self._check_task.cancel()
+            logger.info("Monitoring task cancelled")

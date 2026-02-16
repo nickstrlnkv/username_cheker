@@ -100,9 +100,18 @@ async def reset_session(callback: CallbackQuery, db, checker, bot, auth_handler)
 
 @router.callback_query(F.data == "start_monitoring")
 async def start_monitoring(callback: CallbackQuery, db, checker, bot):
-    is_active = await db.get_setting('monitoring_active')
+    # Проверяем реальное состояние мониторинга, а не только БД
+    # Это важно при перезапуске бота, когда в БД может остаться старое значение
+    is_running = checker.is_running and checker._check_task is not None and not checker._check_task.done()
+    is_active_db = await db.get_setting('monitoring_active')
     
-    if is_active == '1':
+    # Если в БД указано что мониторинг активен, но реально он не запущен - синхронизируем состояние
+    if is_active_db == '1' and not is_running:
+        logger.warning("Database shows monitoring as active, but task is not running. Resetting DB state.")
+        await db.set_setting('monitoring_active', '0')
+        is_active_db = '0'
+    
+    if is_running or is_active_db == '1':
         await callback.answer("⚠️ Мониторинг уже запущен!", show_alert=True)
         return
     
@@ -165,17 +174,23 @@ async def start_monitoring(callback: CallbackQuery, db, checker, bot):
         except Exception as e:
             logger.error(f"Error sending notification: {e}")
     
-    checker._check_task = checker.client.loop.create_task(
-        checker.start_monitoring(db, notification_callback)
-    )
-    
-    await callback.message.edit_text(
-        "✅ <b>Мониторинг запущен!</b>\n\n"
-        "Бот начал проверку username в фоновом режиме.",
-        reply_markup=keyboards.get_back_button(),
-        parse_mode="HTML"
-    )
-    await callback.answer()
+    try:
+        checker._check_task = asyncio.create_task(
+            checker.start_monitoring(db, notification_callback)
+        )
+        logger.info(f"Monitoring task created and started. Task: {checker._check_task}")
+        
+        await callback.message.edit_text(
+            "✅ <b>Мониторинг запущен!</b>\n\n"
+            "Бот начал проверку username в фоновом режиме.",
+            reply_markup=keyboards.get_back_button(),
+            parse_mode="HTML"
+        )
+        await callback.answer()
+    except Exception as e:
+        logger.error(f"Error starting monitoring: {e}", exc_info=True)
+        await db.set_setting('monitoring_active', '0')
+        await callback.answer("❌ Ошибка при запуске мониторинга!", show_alert=True)
 
 async def spam_until_occupied(bot, checker, db, chat_id, username, message_text, delay):
     """Спамит в чат пока username не займут"""
@@ -215,9 +230,14 @@ async def spam_until_occupied(bot, checker, db, chat_id, username, message_text,
 
 @router.callback_query(F.data == "stop_monitoring")
 async def stop_monitoring(callback: CallbackQuery, db, checker):
-    is_active = await db.get_setting('monitoring_active')
+    # Проверяем реальное состояние мониторинга
+    is_running = checker.is_running and checker._check_task is not None and not checker._check_task.done()
+    is_active_db = await db.get_setting('monitoring_active')
     
-    if is_active == '0':
+    # Если реально не запущен, синхронизируем БД
+    if not is_running:
+        if is_active_db == '1':
+            await db.set_setting('monitoring_active', '0')
         await callback.answer("⚠️ Мониторинг не запущен!", show_alert=True)
         return
     
