@@ -13,6 +13,9 @@ async def authorize_telethon(
     delay: float = 2.0
 ):
     """Authorize Telethon via bot messages."""
+    if auth_handler.is_auth_in_progress():
+        return
+
     auth_handler.set_auth_in_progress(True)
     try:
         if delay:
@@ -92,7 +95,6 @@ async def ensure_authorized(
     if is_authorized:
         return True
 
-    auth_handler.set_auth_in_progress(True)
     asyncio.create_task(
         authorize_telethon(
             bot,
