@@ -158,6 +158,28 @@ class Database:
                 )
                 await db.commit()
     
+    async def is_notified(self, username: str) -> bool:
+        """Проверяет, было ли отправлено уведомление для username"""
+        username = username.lstrip('@').lower()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                'SELECT notified FROM usernames WHERE username = ?',
+                (username,)
+            )
+            row = await cursor.fetchone()
+            return bool(row[0]) if row else False
+    
+    async def reset_notified(self, username: str):
+        """Сбрасывает флаг уведомления для username"""
+        username = username.lstrip('@').lower()
+        async with self._lock:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute(
+                    'UPDATE usernames SET notified = 0 WHERE username = ?',
+                    (username,)
+                )
+                await db.commit()
+    
     async def get_statistics(self) -> Dict:
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute('SELECT COUNT(*) FROM usernames')

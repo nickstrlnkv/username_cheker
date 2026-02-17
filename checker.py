@@ -193,12 +193,15 @@ class UsernameChecker:
                     for username, status in results.items():
                         old_status = await db.update_username_status(username, status)
                         
-                        if old_status == 'occupied' and status == 'free':
-                            logger.info(f"USERNAME FREED: @{username}")
+                        # Отправляем уведомление каждый раз, когда username свободен
+                        if status == 'free':
+                            logger.info(f"USERNAME FREE: @{username}")
                             await notification_callback(username)
-                        elif old_status == 'unknown' and status == 'free':
-                            logger.info(f"FREE USERNAME FOUND: @{username}")
-                            await notification_callback(username)
+                        
+                        # Прекращаем уведомления, если username снова занят
+                        elif old_status == 'free' and status == 'occupied':
+                            logger.info(f"USERNAME RE-OCCUPIED: @{username} - notifications stopped")
+                            await db.mark_as_notified(username)
                     
                     logger.info(f"Checked batch {i//config.CHECK_BATCH_SIZE + 1}/{(len(usernames)-1)//config.CHECK_BATCH_SIZE + 1}")
                     await asyncio.sleep(config.CHECK_INTERVAL)
