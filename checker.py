@@ -201,7 +201,7 @@ class UsernameChecker:
                         # Прекращаем уведомления, если username снова занят
                         elif old_status == 'free' and status == 'occupied':
                             logger.info(f"USERNAME RE-OCCUPIED: @{username} - notifications stopped")
-                            await db.mark_as_notified(username)
+                            await db.reset_notified(username)
                     
                     logger.info(f"Checked batch {i//config.CHECK_BATCH_SIZE + 1}/{(len(usernames)-1)//config.CHECK_BATCH_SIZE + 1}")
                     await asyncio.sleep(config.CHECK_INTERVAL)

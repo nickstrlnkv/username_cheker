@@ -185,8 +185,6 @@ async def start_monitoring(callback: CallbackQuery, db, checker, bot):
                 del active_spam_tasks[task_username]
         
         task.add_done_callback(lambda t: cleanup_task(username_clean))
-        
-        await db.mark_as_notified(username_clean)
     
     async def notification_callback(username: str):
         """Callback при обнаружении освобождения username"""
