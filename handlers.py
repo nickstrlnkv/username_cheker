@@ -218,16 +218,17 @@ async def spam_until_occupied(bot, checker, db, chat_id, username, message_text,
     
     while True:
         try:
-            # Отправляем сообщение
-            try:
-                await bot.send_message(
-                    chat_id,
-                    message_text,
-                    parse_mode="HTML"
-                )
-            except Exception as e:
-                logger.error(f"Error sending spam message: {e}")
-                # Продолжаем даже если одно сообщение не отправилось
+            # Отправляем сообщение всем администраторам
+            for admin_id in config.ADMIN_IDS:
+                try:
+                    await bot.send_message(
+                        admin_id,
+                        message_text,
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    logger.error(f"Error sending spam message to admin {admin_id}: {e}")
+                    # Продолжаем даже если одно сообщение не отправилось
             
             await asyncio.sleep(delay)
             
