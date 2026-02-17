@@ -157,9 +157,20 @@ class UsernameChecker:
         
         return results
     
-    async def start_monitoring(self, db, notification_callback):
+    async def start_monitoring(self, db, notification_callback, spam_handler=None):
         self.is_running = True
         logger.info("Monitoring started - entering main loop")
+        
+        # Проверяем свободные username при старте
+        if spam_handler:
+            free_usernames = await db.get_free_usernames()
+            if free_usernames:
+                logger.info(f"Found {len(free_usernames)} free usernames at startup. Starting spam for them...")
+                for username in free_usernames:
+                    try:
+                        await spam_handler(username)
+                    except Exception as e:
+                        logger.error(f"Error starting spam for @{username}: {e}")
         
         while self.is_running:
             try:
@@ -191,6 +202,17 @@ class UsernameChecker:
                     
                     logger.info(f"Checked batch {i//config.CHECK_BATCH_SIZE + 1}/{(len(usernames)-1)//config.CHECK_BATCH_SIZE + 1}")
                     await asyncio.sleep(config.CHECK_INTERVAL)
+                
+                # Проверяем свободные username после каждого цикла
+                if spam_handler:
+                    free_usernames = await db.get_free_usernames()
+                    if free_usernames:
+                        logger.info(f"Found {len(free_usernames)} free usernames. Starting spam for them...")
+                        for username in free_usernames:
+                            try:
+                                await spam_handler(username)
+                            except Exception as e:
+                                logger.error(f"Error starting spam for @{username}: {e}")
                 
                 logger.info(f"Cycle completed. Waiting {config.CYCLE_DELAY} seconds before next cycle...")
                 await asyncio.sleep(config.CYCLE_DELAY)

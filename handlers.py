@@ -121,62 +121,83 @@ async def start_monitoring(callback: CallbackQuery, db, checker, bot):
     chat_id = callback.message.chat.id
     await db.set_setting('spam_chat_id', str(chat_id))
     
-    async def notification_callback(username: str):
-        try:
-            # Отправка уведомлений админам
-            for admin_id in config.ADMIN_IDS:
+    # Словарь для отслеживания активных спам-задач (чтобы не запускать несколько для одного username)
+    active_spam_tasks = {}
+    
+    async def start_spam_for_username(username: str):
+        """Запускает спам для username со статусом 'free'"""
+        username_clean = username.lstrip('@').lower()
+        
+        # Проверяем, не запущен ли уже спам для этого username
+        if username_clean in active_spam_tasks:
+            task = active_spam_tasks[username_clean]
+            if not task.done():
+                logger.debug(f"Spam already running for @{username_clean}, skipping")
+                return
+        
+        # Проверяем статус username в БД
+        all_usernames = await db.get_all_usernames()
+        username_data = next((u for u in all_usernames if u['username'] == username_clean), None)
+        
+        if not username_data or username_data['status'] != 'free':
+            logger.debug(f"Username @{username_clean} is not free (status: {username_data['status'] if username_data else 'not found'}), skipping spam")
+            return
+        
+        # Получаем настройки спама из БД
+        spam_chat_id_str = await db.get_setting('spam_chat_id') or ''
+        spam_delay = float(await db.get_setting('spam_delay') or '0.5')
+        
+        if not spam_chat_id_str:
+            logger.warning("spam_chat_id not set, skipping spam")
+            return
+        
+        spam_chat_id = int(spam_chat_id_str)
+        message_text = (
+            f"🎉 <b>USERNAME ОСВОБОДИЛСЯ!</b>\n\n"
+            f"@{username_clean}\n\n"
+            f"Быстрее регистрируйте!"
+        )
+        
+        # Отправка уведомлений админам
+        for admin_id in config.ADMIN_IDS:
+            try:
                 await bot.send_message(
                     admin_id,
                     f"🎉 <b>USERNAME ОСВОБОДИЛСЯ!</b>\n\n"
-                    f"@{username}\n\n"
+                    f"@{username_clean}\n\n"
                     f"Быстрее регистрируйте!",
                     parse_mode="HTML"
                 )
-            
-            # Получаем настройки спама из БД
-            spam_chat_id_str = await db.get_setting('spam_chat_id') or ''
-            spam_delay = float(await db.get_setting('spam_delay') or '0.5')
-            spam_mode = await db.get_setting('spam_mode') or 'count'
-            spam_count = int(await db.get_setting('spam_message_count') or '10')
-            
-            if not spam_chat_id_str:
-                logger.warning("spam_chat_id not set, skipping spam")
-                await db.mark_as_notified(username)
-                return
-            
-            spam_chat_id = int(spam_chat_id_str)
-            message_text = (
-                f"🎉 <b>USERNAME ОСВОБОДИЛСЯ!</b>\n\n"
-                f"@{username}\n\n"
-                f"Быстрее регистрируйте!"
-            )
-            
-            if spam_mode == 'count':
-                # Режим: указать количество сообщений
-                for i in range(spam_count):
-                    try:
-                        await bot.send_message(
-                            spam_chat_id,
-                            message_text,
-                            parse_mode="HTML"
-                        )
-                        await asyncio.sleep(spam_delay)
-                    except Exception as spam_error:
-                        logger.error(f"Error spamming chat (message {i+1}/{spam_count}): {spam_error}")
-                        continue
-            elif spam_mode == 'until_occupied':
-                # Режим: спамить до занятия username
-                asyncio.create_task(
-                    spam_until_occupied(bot, checker, db, spam_chat_id, username, message_text, spam_delay)
-                )
-            
-            await db.mark_as_notified(username)
+            except Exception as e:
+                logger.error(f"Error sending notification to admin {admin_id}: {e}")
+        
+        # Для свободных username всегда используем режим 'until_occupied'
+        # чтобы спамить пока username не займется
+        logger.info(f"Starting spam for free username @{username_clean} (mode: until_occupied)")
+        task = asyncio.create_task(
+            spam_until_occupied(bot, checker, db, spam_chat_id, username_clean, message_text, spam_delay)
+        )
+        active_spam_tasks[username_clean] = task
+        
+        # Удаляем задачу из словаря когда она завершится
+        def cleanup_task(task_username):
+            if task_username in active_spam_tasks:
+                del active_spam_tasks[task_username]
+        
+        task.add_done_callback(lambda t: cleanup_task(username_clean))
+        
+        await db.mark_as_notified(username_clean)
+    
+    async def notification_callback(username: str):
+        """Callback при обнаружении освобождения username"""
+        try:
+            await start_spam_for_username(username)
         except Exception as e:
-            logger.error(f"Error sending notification: {e}")
+            logger.error(f"Error in notification_callback for @{username}: {e}")
     
     try:
         checker._check_task = asyncio.create_task(
-            checker.start_monitoring(db, notification_callback)
+            checker.start_monitoring(db, notification_callback, spam_handler=start_spam_for_username)
         )
         logger.info(f"Monitoring task created and started. Task: {checker._check_task}")
         

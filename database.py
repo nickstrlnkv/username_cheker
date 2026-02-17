@@ -114,6 +114,15 @@ class Database:
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
     
+    async def get_free_usernames(self) -> List[str]:
+        """Получает список username со статусом 'free'"""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT username FROM usernames WHERE status = 'free'"
+            )
+            rows = await cursor.fetchall()
+            return [row[0] for row in rows]
+    
     async def update_username_status(self, username: str, status: str):
         username = username.lstrip('@').lower()
         async with self._lock:

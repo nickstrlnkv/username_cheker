@@ -21,9 +21,9 @@ SESSION_NAME = 'checker_session'
 # - CHECK_BATCH_SIZE: 20-50 username в батче
 # - CYCLE_DELAY: 10-30 секунд между полными циклами
 
-CHECK_BATCH_SIZE = 30  # Уменьшено с 50 для более плавной работы
-CHECK_INTERVAL = 3  # Увеличено с 1 до 3 секунд между батчами
-MAX_CONCURRENT_CHECKS = 5  # Уменьшено с 20 до 5 для избежания FloodWait
-CYCLE_DELAY = 15  # Увеличено с 5 до 15 секунд между полными циклами
+CHECK_BATCH_SIZE = 20  # Уменьшено для более безопасной работы
+CHECK_INTERVAL = 5  # Увеличено до 5 секунд между батчами для снижения нагрузки
+MAX_CONCURRENT_CHECKS = 3  # Уменьшено до 3 для максимальной безопасности от FloodWait
+CYCLE_DELAY = 20  # Увеличено до 20 секунд между полными циклами
 
 LOG_FILE = 'logs/bot.log'
