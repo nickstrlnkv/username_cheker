@@ -218,6 +218,11 @@ async def spam_until_occupied(bot, checker, db, chat_id, username, message_text,
     
     while True:
         try:
+            # Проверяем, запущен ли мониторинг
+            if not checker.is_running:
+                logger.info(f"Monitoring stopped, stopping spam for @{username_clean}")
+                break
+            
             # Отправляем сообщение всем администраторам
             for admin_id in config.ADMIN_IDS:
                 try:
