@@ -53,12 +53,15 @@ async def main():
     @auth_router.message(F.from_user.id.in_(config.ADMIN_IDS))
     async def handle_auth_messages(message: Message):
         if auth_handler.is_waiting_phone():
+            auth_handler.set_admin_id(message.from_user.id)
             auth_handler.set_phone(message.text)
             await message.answer("✅ Номер телефона получен")
         elif auth_handler.is_waiting_code():
+            auth_handler.set_admin_id(message.from_user.id)
             auth_handler.set_code(message.text)
             await message.answer("✅ Код получен")
         elif auth_handler.is_waiting_password():
+            auth_handler.set_admin_id(message.from_user.id)
             auth_handler.set_password(message.text)
             await message.delete()
             await message.answer("✅ Пароль получен и удален из истории")
