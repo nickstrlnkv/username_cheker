@@ -53,18 +53,23 @@ async def main():
     @auth_router.message(F.from_user.id.in_(config.ADMIN_IDS))
     async def handle_auth_messages(message: Message):
         if auth_handler.is_waiting_phone():
+            logger.info("Auth message received (phone) from %s", message.from_user.id)
             auth_handler.set_admin_id(message.from_user.id)
             auth_handler.set_phone(message.text)
             await message.answer("✅ Номер телефона получен")
         elif auth_handler.is_waiting_code():
+            logger.info("Auth message received (code) from %s", message.from_user.id)
             auth_handler.set_admin_id(message.from_user.id)
             auth_handler.set_code(message.text)
             await message.answer("✅ Код получен")
         elif auth_handler.is_waiting_password():
+            logger.info("Auth message received (password) from %s", message.from_user.id)
             auth_handler.set_admin_id(message.from_user.id)
             auth_handler.set_password(message.text)
             await message.delete()
             await message.answer("✅ Пароль получен и удален из истории")
+        else:
+            logger.info("Auth message received but no auth step pending (from %s)", message.from_user.id)
     
     dp.include_router(router)
     dp.include_router(auth_router)

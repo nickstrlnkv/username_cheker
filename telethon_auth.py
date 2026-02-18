@@ -13,7 +13,9 @@ async def authorize_telethon(
     delay: float = 2.0
 ):
     """Authorize Telethon via bot messages."""
+    logger.info("authorize_telethon called (delay=%s, prompt_admin_id=%s)", delay, prompt_admin_id)
     if auth_handler.is_auth_in_progress():
+        logger.info("Authorization already in progress, skipping")
         return
 
     auth_handler.set_auth_in_progress(True)
@@ -28,8 +30,12 @@ async def authorize_telethon(
         elif target_admin_ids:
             auth_handler.set_admin_id(target_admin_ids[0])
 
+        logger.info("Authorization target admins: %s", target_admin_ids)
+
+        logger.info("Connecting Telethon client...")
         await checker.client.connect()
         is_authorized = await checker.client.is_user_authorized()
+        logger.info("Telethon is_authorized=%s", is_authorized)
 
         if not is_authorized:
             logger.info("Telethon not authorized, will request auth via bot")
@@ -41,11 +47,14 @@ async def authorize_telethon(
                     "Следуйте инструкциям бота.",
                     parse_mode="HTML"
                 )
+            auth_handler.set_prompt_admin_ids(target_admin_ids)
+            logger.info("Starting Telethon client with auth callbacks...")
             await checker.start(
                 phone_callback=auth_handler.phone_callback,
                 code_callback=auth_handler.code_callback,
                 password_callback=auth_handler.password_callback
             )
+            logger.info("Telethon client started after authorization")
             for admin_id in target_admin_ids:
                 await bot.send_message(
                     admin_id,
@@ -55,11 +64,13 @@ async def authorize_telethon(
                 )
         else:
             logger.info("Telethon already authorized")
+            logger.info("Starting Telethon client (already authorized)...")
             await checker.start(
                 phone_callback=auth_handler.phone_callback,
                 code_callback=auth_handler.code_callback,
                 password_callback=auth_handler.password_callback
             )
+            logger.info("Telethon client started (already authorized)")
             for admin_id in target_admin_ids:
                 await bot.send_message(
                     admin_id,
