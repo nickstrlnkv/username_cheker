@@ -4,6 +4,7 @@ from aiogram import Bot, Dispatcher, Router, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import Message, CallbackQuery
+from aiogram.exceptions import TelegramRetryAfter
 
 import config
 from database import Database
@@ -15,6 +16,7 @@ from telethon_auth import authorize_telethon, ensure_authorized
 
 logger = logging.getLogger(__name__)
 auth_handler = None
+current_token_index = 0
 
 async def main():
     setup_logging()
@@ -124,16 +126,53 @@ async def main():
         authorize_telethon(bot, checker, auth_handler, config.ADMIN_IDS)
     )
     
-    try:
-        logger.info("Bot started successfully!")
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
-    except Exception as e:
-        logger.error(f"Error in main loop: {e}", exc_info=True)
-    finally:
-        auth_task.cancel()
-        await checker.stop()
-        await bot.session.close()
-        logger.info("Bot stopped")
+    global current_token_index
+    max_retries = len(config.BOT_TOKENS) if len(config.BOT_TOKENS) > 1 else 1
+    
+    while True:
+        try:
+            logger.info("Bot started successfully!")
+            await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+            break
+        except TelegramRetryAfter as e:
+            retry_after = e.retry_after
+            logger.warning(f"Rate limit hit on token #{current_token_index + 1}. Retry after {retry_after} seconds")
+            
+            if len(config.BOT_TOKENS) > 1 and retry_after > 10:
+                current_token_index = (current_token_index + 1) % len(config.BOT_TOKENS)
+                new_token = config.BOT_TOKENS[current_token_index]
+                logger.info(f"Switching to backup token #{current_token_index + 1}")
+                
+                await bot.session.close()
+                bot = Bot(
+                    token=new_token,
+                    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+                )
+                auth_handler.bot = bot
+                
+                for admin_id in config.ADMIN_IDS:
+                    try:
+                        await bot.send_message(
+                            admin_id,
+                            f"⚠️ <b>Rate limit на боте</b>\n\n"
+                            f"Переключение на резервный токен #{current_token_index + 1}",
+                            parse_mode="HTML"
+                        )
+                    except Exception:
+                        pass
+                
+                await asyncio.sleep(2)
+            else:
+                logger.info(f"Waiting {retry_after} seconds before retry...")
+                await asyncio.sleep(retry_after)
+        except Exception as e:
+            logger.error(f"Error in main loop: {e}", exc_info=True)
+            break
+    
+    auth_task.cancel()
+    await checker.stop()
+    await bot.session.close()
+    logger.info("Bot stopped")
 
 if __name__ == '__main__':
     try:

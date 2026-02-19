@@ -3,7 +3,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-BOT_TOKEN = os.getenv('BOT_TOKEN')
+# Поддержка нескольких токенов для переключения при rate limit
+bot_tokens_str = os.getenv('BOT_TOKENS', os.getenv('BOT_TOKEN', ''))
+BOT_TOKENS = [token.strip() for token in bot_tokens_str.split(',') if token.strip()]
+BOT_TOKEN = BOT_TOKENS[0] if BOT_TOKENS else None
 API_ID = int(os.getenv('API_ID', 0))
 API_HASH = os.getenv('API_HASH')
 
