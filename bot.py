@@ -22,8 +22,8 @@ async def main():
     setup_logging()
     logger.info("Starting Telegram Username Monitor Bot...")
     
-    if not config.BOT_TOKEN:
-        logger.error("BOT_TOKEN not found in .env file!")
+    if not config.BOT_TOKENS:
+        logger.error("BOT_TOKEN or BOT_TOKENS not found in .env file!")
         return
     
     if not config.API_ID or not config.API_HASH:
